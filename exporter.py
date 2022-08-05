@@ -103,14 +103,6 @@ def is_delta(bb):
     else:
         return 'full'
 
-
-def is_delta(bb):
-    if re.match(r"^.*_D_.*$", bb['backup_name']):
-        return 'delta'
-    else:
-        return 'full'
-
-
 class Exporter():
 
     def __init__(self):
@@ -123,12 +115,11 @@ class Exporter():
 
         # Declare metrics
 
-        self.basebackup = Gauge('walg_basebackup', 'Remote Basebackups', ['start_wal_segment', 'start_lsn', 'backup'], unit='seconds')
-        self.basebackup_count = Gauge('walg_basebackup_count', 'Remote Basebackups count')
-        self.last_upload = Gauge('walg_last_upload', 'Last upload of incremental or full backup', ['type'], unit='seconds')
-        self.oldest_basebackup = Gauge('walg_oldest_basebackup', 'oldest full backup',  unit='seconds')
-        self.xlog_ready = Gauge('walg_missing_remote_wal_segment_at_end', 'Xlog ready for upload')
-
+        self.basebackup = Gauge('walg_basebackup', 'Remote Basebackups', ['start_wal_segment', 'start_lsn', 'backup', 'version'], unit='seconds')
+        self.basebackup_count = Gauge('walg_basebackup_count', 'Remote Basebackups count', ['target'])
+        self.last_upload = Gauge('walg_last_upload', 'Last upload of incremental or full backup', ['type', 'version'], unit='seconds')
+        self.oldest_basebackup = Gauge('walg_oldest_basebackup', 'oldest full backup', ['version'], unit='seconds')
+        self.xlog_ready = Gauge('walg_missing_remote_wal_segment_at_end', 'Xlog ready for upload', ['version'])
         self.exception = Gauge('walg_exception',
                                'Wal-g exception: '
                                '0 : no exception everything is OK, '
@@ -136,35 +127,35 @@ class Exporter():
                                '2 : no archives found in local,  '
                                '3 : basebackup and xlog errors '
                                '4 : remote is unreachable, '
-                               '6 : no archives found in local & remote is unreachable.')
+
+                               '6 : no archives found in local & remote is unreachable.', ['version'])
+
+        self.xlog_since_last_bb = Gauge('walg_xlogs_since_basebackup', 'Xlog uploaded since last base backup', ['version'])
 
 
-        self.xlog_since_last_bb = Gauge('walg_xlogs_since_basebackup', 'Xlog uploaded since last base backup')
+        self.last_backup_duration = Gauge('walg_last_backup_duration', 'Duration of the last full backup', ['version'], unit='seconds')
 
-        self.last_backup_duration = Gauge('walg_last_backup_duration', 'Duration of the last full backup', unit='seconds')
+        self.last_backup_size = Gauge('walg_last_backup_size', 'Size of last uploaded backup. Label compression="compressed" for  compressed size and compression="uncompressed" for uncompressed ', ['compression', 'version'], unit='bytes')
 
-        self.last_backup_size = Gauge('walg_last_backup_size', 'Size of last uploaded backup. Label compression="compressed" for  compressed size and compression="uncompressed" for uncompressed ', ['compression'], unit='bytes')
         self.fetch_metrics()
 
     def fetch_metrics(self):
-
-
         self.is_primary()
-
         self.update_basebackup()
-        self.basebackup_count.set_function(lambda: len(self.bbs))
+        self.basebackup_count.labels('0.1.4').set_function(lambda: len(self.bbs))
         if self.last_xlog_upload_callback is not None:
-            self.last_upload.labels('xlog').set('0.0')
+            self.last_upload.labels('xlog', '0.1.4').set('0.0')
         else:
-            self.last_upload.labels('xlog').set_function(self.last_xlog_upload_callback)
-        self.last_upload.labels('basebackup').set_function(lambda: self.bbs[len(self.bbs) - 1]['start_time'].timestamp() if self.bbs else 0 )
-        self.oldest_basebackup.set_function(lambda: self.bbs[0]['start_time'].timestamp() if self.bbs else 0)
-        self.xlog_ready.set_function(self.xlog_ready_callback)
-        self.exception.set_function(lambda: ((1 if self.basebackup_exception else 0) + (2 if self.xlog_exception else 0) + (4 if self.remote_exception else 0)))
-        self.xlog_since_last_bb.set_function(self.xlog_since_last_bb_callback)
-        self.last_backup_duration.set_function(lambda: ((self.bbs[len(self.bbs) - 1]['finish_time'] - self.bbs[len(self.bbs) - 1]['start_time']).total_seconds() if self.bbs else 0))
-        self.last_backup_size.labels('compressed').set_function(lambda: (self.bbs[len(self.bbs) - 1]['compressed_size'] if self.bbs else 0))
-        self.last_backup_size.labels('uncompressed').set_function(lambda: (self.bbs[len(self.bbs) - 1]['uncompressed_size'] if self.bbs else 0))
+            self.last_upload.labels('xlog', '0.1.4').set_function(self.last_xlog_upload_callback)
+        self.last_upload.labels('basebackup', '0.1.4').set_function(lambda: self.bbs[len(self.bbs) - 1]['start_time'].timestamp() if self.bbs else 0 )
+        self.oldest_basebackup.labels('0.1.4').set_function(lambda: self.bbs[0]['start_time'].timestamp() if self.bbs else 0)
+        self.xlog_ready.labels('0.1.4').set_function(self.xlog_ready_callback)
+        self.exception.labels('0.1.4').set_function(lambda: ((1 if self.basebackup_exception else 0) + (2 if self.xlog_exception else 0) + (4 if self.remote_exception else 0)))
+        self.xlog_since_last_bb.labels('0.1.4').set_function(self.xlog_since_last_bb_callback)
+        self.last_backup_duration.labels('0.1.4').set_function(lambda: ((self.bbs[len(self.bbs) - 1]['finish_time'] - self.bbs[len(self.bbs) - 1]['start_time']).total_seconds() if self.bbs else 0))
+        self.last_backup_size.labels('compressed', '0.1.4').set_function(lambda: (self.bbs[len(self.bbs) - 1]['compressed_size'] if self.bbs else 0))
+        self.last_backup_size.labels('uncompressed', '0.1.4').set_function(lambda: (self.bbs[len(self.bbs) - 1]['uncompressed_size'] if self.bbs else 0))
+
 
     def update_basebackup(self, *unused):
         try:
@@ -180,13 +171,15 @@ class Exporter():
             for bb in self.bbs:
                 if bb['backup_name'] not in new_bbs_name:
                     # Backup deleted
-                    self.basebackup.remove(bb['wal_file_name'],
-                                           bb['start_lsn'], is_delta(bb))
+
+                    self.basebackup.remove(bb['wal_file_name'], bb['start_lsn'], is_delta(bb), '0.1.4')
+
                     bb_deleted = bb_deleted + 1
             # Add metrics for new backups
             for bb in new_bbs:
                 if bb['backup_name'] not in old_bbs_name:
-                    (self.basebackup.labels(bb['wal_file_name'], bb['start_lsn'], is_delta(bb))
+                    (self.basebackup.labels(bb['wal_file_name'], bb['start_lsn'], is_delta(bb), '0.1.4')
+
                      .set(bb['start_time'].timestamp()))
             # Update backup list
             self.bbs = new_bbs
@@ -200,16 +193,13 @@ class Exporter():
         except subprocess.CalledProcessError as e:
             error(e.stderr)
             self.remote_exception = True
-            for bb in self.bbs:
-                self.basebackup.remove(bb['wal_file_name'], bb['start_lsn'], is_delta(bb))
+            self.basebackup._metrics = {}
             self.bbs = []
         except json.decoder.JSONDecodeError:
             info(res.stderr)
             self.basebackup_exception = True
-            for bb in self.bbs:
-                self.basebackup.remove(bb['wal_file_name'], bb['start_lsn'], is_delta(bb))
+            self.basebackup._metrics = {}
             self.bbs = []
-
     def last_archive_status(self):
         if (self.last_archive_check is None or
                 datetime.datetime.now().timestamp() -
@@ -252,9 +242,7 @@ class Exporter():
                 host=os.getenv('PGHOST', '127.0.0.1'),
                 port=os.getenv('PGPORT', '5432'),
                 user=os.getenv('PGUSER', 'postgres'),
-
                 password=os.getenv('PGPASSWORD'),
-
                 dbname=os.getenv('PGDATABASE', 'postgres'),
 
         ) as db_connection:
@@ -274,21 +262,18 @@ class Exporter():
         else:
             return 0
 
-
     def flush_metrics(self):
 
-        self.basebackup_count.set('0.0')
-        self.last_upload.labels('xlog').set('0.0')
-        self.last_upload.labels('basebackup').set('0.0')
-        self.oldest_basebackup.set('0.0')
-        self.xlog_ready.set('0.0')
-        self.exception.set('0.0')
-        self.xlog_since_last_bb.set('0.0')
-        self.last_backup_duration.set('0.0')
-        self.last_backup_size.labels('compressed').set('0.0')
-        self.last_backup_size.labels('uncompressed').set('0.0')
-        for bb in self.bbs:
-            self.basebackup.remove(bb['wal_file_name'], bb['start_lsn'], is_delta(bb))
+        self.basebackup_count._metrics = {}
+        self.last_upload._metrics = {}
+        self.oldest_basebackup._metrics = {}
+        self.xlog_ready._metrics = {}
+        self.exception._metrics = {}
+        self.xlog_since_last_bb._metrics = {}
+        self.last_backup_duration._metrics = {}
+        self.last_backup_size._metrics = {}
+        self.basebackup._metrics = {}
+
 
     # Check if this is a master instance
     def is_primary(self):
@@ -318,7 +303,6 @@ class Exporter():
                     self.flush_metrics()
                 error(f"Unable to connect to postgres server: {e}, retrying in 60sec...")
                 time.sleep(60)
-
 
 
 
